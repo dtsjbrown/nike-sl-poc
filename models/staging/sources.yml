@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: tpch
+    description: TPCH sample data in Unity Catalog
+    database: raw_data           # Unity Catalog catalog
+    schema: tpch                 # Unity Catalog schema
+    tables:
+      - name: customer
+      - name: orders
+      - name: lineitem
+      - name: nation
+      - name: part
+      - name: partsupp
+      - name: region
+      - name: supplier
