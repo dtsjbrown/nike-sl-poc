@@ -41,3 +41,8 @@ flags:
 models:
   nike_poc:
     # Applies to all files under models/staging/
+<<<<<<< HEAD
+=======
+    staging:
+      +materialized: table
+>>>>>>> 53a6e71dd92721d8ee8fc3c8221206f32cd7b23d
