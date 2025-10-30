@@ -6,7 +6,7 @@
                         "net_item_sales_amount"]
                         -%}
 
- {%- for field in return_fields %}
-     {{ field }}{% if not loop.last %},{% endif %}{% endfor -%}
+    {%- for field in return_fields %}
+    {{ field }}{% if not loop.last %},{% endif %}{% endfor -%}
 
 {% endmacro %}
