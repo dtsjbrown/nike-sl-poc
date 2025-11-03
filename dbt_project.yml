@@ -34,8 +34,8 @@ clean-targets:         # directories to be removed by `dbt clean`
 # using the `{{ config(...) }}` macro.
 flags:
   use_materialization_v2: true
-
   require_generic_test_arguments_property: true
+
 models:
   nike_poc:
     # Applies to all files under models/staging/
