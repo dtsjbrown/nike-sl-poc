@@ -1,139 +1,57 @@
-version: 2
+with orders as (
+    
+    select * from {{ ref('stg_orders') }}
 
-models:
-  - name: order_items
-    description: Intermediate model where we calculate item price, discounts and tax. This model is at the order item level.
-    columns:
-      - name: order_item_key
-        -- description: '{{ doc("order_item_key") }}'
-        data_tests:
-          - unique
-          - not_null
-      - name: order_key
-        description: foreign key for orders
-      - name: customer_key
-        description: foreign key for customers
-      - name: part_key
-        description: foreign key for part
-      - name: supplier_key
-        description: foreign key for suppliers
-      - name: order_date
-        description: date of the order
-      - name: order_status_code
-        description: status of the order
-      - name: return_flag
-        -- description: '{{ doc("return_flag") }}'
-      - name: line_number
-        -- description: '{{ doc("line_number") }}'
-      - name: order_item_status_code
-        description: status of the order item
-      - name: ship_date
-        -- description: '{{ doc("ship_date") }}'
-      - name: commit_date
-        -- description: '{{ doc("commit_date") }}'
-      - name: receipt_date
-        -- description: '{{ doc("receipt_date") }}'
-      - name: ship_mode
-        -- description: '{{ doc("ship_mode") }}'
-      - name: extended_price
-        -- description: '{{ doc("extended_price") }}'
-      - name: quantity
-        description: total units
-      - name: base_price
-        -- description: '{{ doc("base_price") }}'
-      - name: discount_percentage
-        -- description: '{{ doc("discount_percentage") }}'
-      - name: discounted_price
-        -- description: '{{ doc("discounted_price") }}'
-      - name: gross_item_sales_amount
-        -- description: '{{ doc("gross_item_sales_amount") }}'
-      - name: discounted_item_sales_amount
-        -- description: '{{ doc("discounted_item_sales_amount") }}'
-      - name: item_discount_amount
-        -- description: '{{ doc("item_discount_amount") }}'
-      - name: tax_rate
-        -- description: '{{ doc("tax_rate") }}'
-      - name: item_tax_amount
-        description: item level tax total
-      - name: net_item_sales_amount
-        -- description: '{{ doc("net_item_sales_amount") }}'
-    config:
-      tags:
-        - output_table_type|orders
-  - name: part_suppliers
-    description: Intermediate model where we join part, supplier and part_supplier. This model is at the part supplier level.
-    columns:
-      - name: part_supplier_key
-        description: primary key of the models
-        data_tests:
-          - unique
-          - not_null
-      - name: part_key
-        description: foreign key for part
-      - name: part_name
-        description: name of the part
-      - name: manufacturer
-        description: manufacturer of the part
-      - name: brand
-        description: brand of the part
-      - name: part_type
-        description: type of part including material
-      - name: part_size
-        description: size of the part
-      - name: container
-        description: container of the part
-      - name: retail_price
-        -- description: '{{ doc("retail_price") }}'
-      - name: supplier_key
-        description: foreign key for supplier
-      - name: supplier_name
-        -- description: '{{ doc("supplier_name") }}'
-      - name: supplier_address
-        -- description: '{{ doc("supplier_address") }}'
-      - name: phone_number
-        -- description: '{{ doc("phone_number") }}'
-      - name: account_balance
-        -- description: '{{ doc("account_balance") }}'
-      - name: nation_key
-        -- description: foreign key for nation
-      - name: available_quantity
-        -- description: '{{ doc("available_quantity") }}'
-      - name: cost
-        -- description: '{{ doc("cost") }}'
+),
 
-  - name: customer_tier
-    description: puts customers into tiers (1-4)
-    columns:
-      - name: customer_key
-        data_tests:
-          - unique
-      - name: lifetime_value
-      - name: tier_name
+line_item as (
 
-unit_tests:
-  - name: tiers_are_working
-    description: "check if the logic for tiering is working correctly"
-    model: customer_tier
-    given:
-      - input: ref('stg_customers')
-        format: dict
-        rows:
-          - {customer_key: 629}
-          - {customer_key: 4}
-          - {customer_key: 1}
-          - {customer_key: 26}
+    select * from {{ ref('stg_lineitems') }}
 
-      - input: ref('stg_orders')
-        format: dict
-        rows:
-          - {customer_key: 629, total_price: 163443}
-          - {customer_key: 4, total_price: 4134568}
-          - {customer_key: 1, total_price: 1428872}
-          - {customer_key: 26, total_price: 418512}
+)
+select 
 
-    expect:
-      rows:
-        - {customer_key: 629, tier_name: tier1}
-        - {customer_key: 4, tier_name: tier2}
-        - {customer_key: 1, tier_name: tier3}
-        - {customer_key: 26, tier_name: tier4}
+    line_item.order_item_key,
+    orders.order_key,
+    orders.customer_key,
+    line_item.part_key,
+    line_item.supplier_key,
+    orders.order_date,
+    orders.status_code as order_status_code,
+    
+    
+    line_item.is_return,
+    
+    line_item.line_number,
+    line_item.status_code as order_item_status_code,
+    line_item.ship_date,
+    line_item.commit_date,
+    line_item.receipt_date,
+    line_item.ship_mode,
+    line_item.extended_price,
+    line_item.quantity,
+    
+    -- extended_price is actually the line item total,
+    -- so we back out the extended price per item
+    (line_item.extended_price/nullif(line_item.quantity, 0)){{ money() }} as base_price,
+    line_item.discount_percentage,
+    (base_price * (1 - line_item.discount_percentage)){{ money() }} as discounted_price,
+
+    line_item.extended_price as gross_item_sales_amount,
+    (line_item.extended_price * (1 - line_item.discount_percentage)){{ money() }} as discounted_item_sales_amount,
+    -- We model discounts as negative amounts
+    (-1 * line_item.extended_price * line_item.discount_percentage){{ money() }} as item_discount_amount,
+    line_item.tax_rate,
+    ((gross_item_sales_amount + item_discount_amount) * line_item.tax_rate){{ money() }} as item_tax_amount,
+    (
+        gross_item_sales_amount + 
+        item_discount_amount + 
+        item_tax_amount
+    ){{ money() }} as net_item_sales_amount
+
+from
+    orders
+inner join line_item
+        on orders.order_key = line_item.order_key
+order by
+    orders.order_date
